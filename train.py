@@ -3,7 +3,6 @@ import logging
 import os
 import sys
 
-import numpy as np
 import torch
 import torch.nn as nn
 from torch import optim
@@ -20,6 +19,8 @@ dir_img = 'data/imgs/'
 dir_mask = 'data/masks/'
 dir_checkpoint = 'checkpoints/'
 
+N_CLASSES = 6
+
 
 def train_net(net,
               device,
@@ -29,8 +30,7 @@ def train_net(net,
               val_percent=0.1,
               save_cp=True,
               img_scale=0.5):
-
-    dataset = BasicDataset(dir_img, dir_mask, img_scale)
+    dataset = BasicDataset(dir_img, dir_mask, N_CLASSES, img_scale)
     n_val = int(len(dataset) * val_percent)
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])
@@ -49,6 +49,7 @@ def train_net(net,
         Checkpoints:     {save_cp}
         Device:          {device.type}
         Images scaling:  {img_scale}
+        N_classes:       {N_CLASSES}
     ''')
 
     optimizer = optim.RMSprop(net.parameters(), lr=lr, weight_decay=1e-8, momentum=0.9)
@@ -106,9 +107,8 @@ def train_net(net,
                         writer.add_scalar('Dice/test', val_score, global_step)
 
                     writer.add_images('images', imgs, global_step)
-                    if net.n_classes == 1:
-                        writer.add_images('masks/true', true_masks, global_step)
-                        writer.add_images('masks/pred', torch.sigmoid(masks_pred) > 0.5, global_step)
+                    writer.add_images('masks/true', true_masks, global_step)
+                    writer.add_images('masks/pred', torch.max(true_masks[0], 0)[0], global_step)
 
         if save_cp:
             try:
@@ -154,7 +154,7 @@ if __name__ == '__main__':
     #   - For 1 class and background, use n_classes=1
     #   - For 2 classes, use n_classes=1
     #   - For N > 2 classes, use n_classes=N
-    net = UNet(n_channels=3, n_classes=1, bilinear=True)
+    net = UNet(n_channels=3, n_classes=N_CLASSES, bilinear=True)
     logging.info(f'Network:\n'
                  f'\t{net.n_channels} input channels\n'
                  f'\t{net.n_classes} output channels (classes)\n'
@@ -179,7 +179,7 @@ if __name__ == '__main__':
                   img_scale=args.scale,
                   val_percent=args.val / 100)
     except KeyboardInterrupt:
-        torch.save(net.state_dict(), 'INTERRUPTED.pth')
+        torch.save(net.state_dict(), 'MODEL.pth')
         logging.info('Saved interrupt')
         try:
             sys.exit(0)
